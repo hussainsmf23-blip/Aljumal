@@ -41,7 +41,7 @@
         .tab-btn.active { background: var(--card); color: var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .section { display: none; }
         .section.active { display: block; }
-        textarea, input[type="number"] {
+        textarea, input[type="text"] {
             width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 10px;
             font-size: 1rem; outline: none; background: #fafafa; margin-bottom: 12px;
         }
@@ -91,20 +91,58 @@
 
     <div id="searchSection" class="section">
         <textarea id="searchText" placeholder="ادخل النص المُراد استخراج الكلمات منه..."></textarea>
-        <input type="number" id="targetNum" placeholder="أدخل الرقم المطلوب للبحث عن كلماته">
+        <input type="text" inputmode="numeric" id="targetNum" placeholder="أدخل الرقم المطلوب للبحث عن كلماته">
         <button class="btn" onclick="findWords()">بحث عن الكلمات المطابقة</button>
         <div class="search-results" id="searchOutput">الكلمات المطابقة ستظهر هنا...</div>
     </div>
 </div>
 
 <script>
+    // قيم الحروف (الجُمّل الكبير). الهمزة بكل أشكالها (أ إ آ ء ئ ؤ) = 1
     const abjad = {
-        'أ': 1, 'إ': 1, 'آ': 1, 'ا': 1, 'ء': 1, 'ب': 2, 'ج': 3, 'د': 4,
-        'ه': 5, 'ة': 5, 'و': 6, 'ز': 7, 'ح': 8, 'ط': 9, 'ي': 10, 'ى': 10,
-        'ك': 20, 'ل': 30, 'م': 40, 'ن': 50, 'س': 60, 'ع': 70, 'ف': 80,
+        'أ': 1, 'إ': 1, 'آ': 1, 'ا': 1, 'ٱ': 1, 'ء': 1, 'ئ': 1, 'ؤ': 1,
+        'ب': 2, 'ج': 3, 'د': 4,
+        'ه': 5, 'ة': 5,
+        'و': 6,
+        'ز': 7, 'ح': 8, 'ط': 9,
+        'ي': 10, 'ى': 10, 'ی': 10,
+        'ك': 20, 'ک': 20,
+        'ل': 30, 'م': 40, 'ن': 50, 'س': 60, 'ع': 70, 'ف': 80,
         'ص': 90, 'ق': 100, 'ر': 200, 'ش': 300, 'ت': 400, 'ث': 500,
         'خ': 600, 'ذ': 700, 'ض': 800, 'ظ': 900, 'غ': 1000
     };
+
+    // حرف = أي حرف (عربي أو غيره) بدون التشكيل والتطويل والأرقام والرموز
+    function isLetter(ch) {
+        return /\p{L}/u.test(ch) && ch !== '\u0640';
+    }
+
+    function analyze(text) {
+        let jummal = 0, chars = 0;
+        for (const ch of text) {
+            if (isLetter(ch)) {
+                chars++;
+                if (abjad[ch] !== undefined) jummal += abjad[ch];
+            }
+        }
+        const words = text.split(/\s+/).filter(w => /[\p{L}\p{N}]/u.test(w));
+        return { jummal, chars, words: words.length };
+    }
+
+    function wordValue(word) {
+        let sum = 0, clean = '';
+        for (const ch of word) {
+            if (abjad[ch] !== undefined) { sum += abjad[ch]; clean += ch; }
+        }
+        return { sum, clean };
+    }
+
+    // تحويل الأرقام العربية والفارسية إلى إنجليزية
+    function normDigits(str) {
+        return str
+            .replace(/[\u0660-\u0669]/g, d => d.charCodeAt(0) - 0x0660)
+            .replace(/[\u06F0-\u06F9]/g, d => d.charCodeAt(0) - 0x06F0);
+    }
 
     function switchTab(tab) {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -120,51 +158,54 @@
 
     const calcInput = document.getElementById('calcInput');
     calcInput.addEventListener('input', () => {
-        const text = calcInput.value;
-        const words = text.trim().split(/\s+/).filter(w => w.length > 0);
-        let jummal = 0, chars = 0;
-
-        for (let char of text) {
-            if (/\s/.test(char)) continue;
-            if (abjad[char] !== undefined) jummal += abjad[char];
-            chars++;
-        }
-
-        document.getElementById('jummalVal').innerText = jummal.toLocaleString('ar-EG');
-        document.getElementById('charVal').innerText = chars.toLocaleString('ar-EG');
-        document.getElementById('wordVal').innerText = (text.trim() === '' ? 0 : words.length).toLocaleString('ar-EG');
+        const r = analyze(calcInput.value);
+        document.getElementById('jummalVal').innerText = r.jummal.toLocaleString('ar-EG');
+        document.getElementById('charVal').innerText = r.chars.toLocaleString('ar-EG');
+        document.getElementById('wordVal').innerText = r.words.toLocaleString('ar-EG');
     });
 
-    function copyResults() {
+    async function copyResults() {
         const text = `تحليل النص:\n- حساب الجُمّل: ${document.getElementById('jummalVal').innerText}\n- عدد الحروف: ${document.getElementById('charVal').innerText}\n- عدد الكلمات: ${document.getElementById('wordVal').innerText}`;
-        navigator.clipboard.writeText(text);
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (e) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch (e2) {}
+            document.body.removeChild(ta);
+        }
         alert('تم نسخ النتائج بنجاح!');
     }
 
     function findWords() {
         const text = document.getElementById('searchText').value;
-        const target = parseInt(document.getElementById('targetNum').value);
+        const target = parseInt(normDigits(document.getElementById('targetNum').value.trim()), 10);
         const output = document.getElementById('searchOutput');
+        output.textContent = '';
 
         if (!text.trim() || isNaN(target)) {
-            output.innerHTML = 'يرجى كتابة نص وتحديد رقم.';
+            output.textContent = 'يرجى كتابة نص وتحديد رقم.';
             return;
         }
 
-        const words = text.trim().split(/\s+/);
-        const matches = [];
-
-        words.forEach(w => {
-            const clean = w.replace(/[^\u0621-\u064A]/g, '');
-            let sum = 0;
-            for (let c of clean) { if (abjad[c]) sum += abjad[c]; }
-            if (sum === target && clean.length > 0) matches.push(clean);
+        const found = new Set();
+        text.split(/\s+/).forEach(w => {
+            const { sum, clean } = wordValue(w);
+            if (clean.length > 0 && sum === target) found.add(clean);
         });
 
-        const unique = [...new Set(matches)];
-        output.innerHTML = unique.length > 0
-            ? unique.map(w => `<span class="word-tag">${w}</span>`).join('')
-            : 'لم يتم العثور على كلمات مطابقة.';
+        if (found.size === 0) {
+            output.textContent = 'لم يتم العثور على كلمات مطابقة.';
+            return;
+        }
+        found.forEach(w => {
+            const span = document.createElement('span');
+            span.className = 'word-tag';
+            span.textContent = w;
+            output.appendChild(span);
+        });
     }
 
     if ('serviceWorker' in navigator) {
