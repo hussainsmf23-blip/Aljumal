@@ -56,6 +56,14 @@
         .btn:hover { background-color: var(--accent); }
         .search-results { margin-top: 14px; padding: 12px; background: #f1f5f9; border-radius: 10px; min-height: 50px; }
         .word-tag { display: inline-block; background: #dbeafe; color: #1e40af; padding: 4px 10px; border-radius: 16px; margin: 3px; font-weight: 600; font-size: 0.9rem; }
+        .tab-btn { font-size: 0.9rem; }
+        .total-box { margin-top: 12px; }
+        .word-list { margin-top: 12px; max-height: 340px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+        .word-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+        .word-row:last-child { border-bottom: none; }
+        .word-row .w { font-size: 1.1rem; font-weight: 600; }
+        .word-row .v { background: #eff6ff; color: var(--accent); font-weight: 700; padding: 2px 12px; border-radius: 12px; min-width: 48px; text-align: center; }
+        .empty-note { padding: 14px; color: #64748b; text-align: center; }
     </style>
 </head>
 <body>
@@ -68,6 +76,7 @@
     <div class="tabs">
         <button class="tab-btn active" onclick="switchTab('calc')">حساب النص</button>
         <button class="tab-btn" onclick="switchTab('search')">البحث العكسي برقم</button>
+        <button class="tab-btn" onclick="switchTab('detail')">جُمّل كل كلمة</button>
     </div>
 
     <div id="calcSection" class="section active">
@@ -94,6 +103,22 @@
         <input type="text" inputmode="numeric" id="targetNum" placeholder="أدخل الرقم المطلوب للبحث عن كلماته">
         <button class="btn" onclick="findWords()">بحث عن الكلمات المطابقة</button>
         <div class="search-results" id="searchOutput">الكلمات المطابقة ستظهر هنا...</div>
+    </div>
+
+    <div id="detailSection" class="section">
+        <textarea id="detailInput" placeholder="ادخل النص هنا لعرض جُمّل كل كلمة على حدة..."></textarea>
+        <div class="results-grid total-box" style="grid-template-columns: repeat(2, 1fr);">
+            <div class="res-box main">
+                <div class="res-label">الجُمّل الكلي</div>
+                <div class="res-value" id="detailTotal">0</div>
+            </div>
+            <div class="res-box">
+                <div class="res-label">عدد الكلمات</div>
+                <div class="res-value" id="detailCount">0</div>
+            </div>
+        </div>
+        <div class="word-list" id="detailList"><div class="empty-note">جُمّل كل كلمة سيظهر هنا...</div></div>
+        <button class="btn" onclick="copyDetail()">📋 نسخ التفاصيل</button>
     </div>
 </div>
 
@@ -144,16 +169,13 @@
             .replace(/[\u06F0-\u06F9]/g, d => d.charCodeAt(0) - 0x06F0);
     }
 
+    const TABS = ['calc', 'search', 'detail'];
     function switchTab(tab) {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-        if (tab === 'calc') {
-            document.querySelectorAll('.tab-btn')[0].classList.add('active');
-            document.getElementById('calcSection').classList.add('active');
-        } else {
-            document.querySelectorAll('.tab-btn')[1].classList.add('active');
-            document.getElementById('searchSection').classList.add('active');
-        }
+        const btns = document.querySelectorAll('.tab-btn');
+        TABS.forEach((t, i) => {
+            btns[i].classList.toggle('active', t === tab);
+            document.getElementById(t + 'Section').classList.toggle('active', t === tab);
+        });
     }
 
     const calcInput = document.getElementById('calcInput');
@@ -206,6 +228,63 @@
             span.textContent = w;
             output.appendChild(span);
         });
+    }
+
+    // جُمّل كل كلمة + الجُمّل الكلي
+    function breakdown(text) {
+        const rows = [];
+        let total = 0;
+        text.split(/\s+/).forEach(w => {
+            const { sum, clean } = wordValue(w);
+            if (clean.length > 0) { rows.push({ word: clean, value: sum }); total += sum; }
+        });
+        return { rows, total };
+    }
+
+    const detailInput = document.getElementById('detailInput');
+    detailInput.addEventListener('input', () => {
+        const { rows, total } = breakdown(detailInput.value);
+        const list = document.getElementById('detailList');
+        list.textContent = '';
+        document.getElementById('detailTotal').innerText = total.toLocaleString('ar-EG');
+        document.getElementById('detailCount').innerText = rows.length.toLocaleString('ar-EG');
+        if (rows.length === 0) {
+            const note = document.createElement('div');
+            note.className = 'empty-note';
+            note.textContent = 'جُمّل كل كلمة سيظهر هنا...';
+            list.appendChild(note);
+            return;
+        }
+        rows.forEach(r => {
+            const row = document.createElement('div');
+            row.className = 'word-row';
+            const w = document.createElement('span');
+            w.className = 'w';
+            w.textContent = r.word;
+            const v = document.createElement('span');
+            v.className = 'v';
+            v.textContent = r.value.toLocaleString('ar-EG');
+            row.appendChild(w);
+            row.appendChild(v);
+            list.appendChild(row);
+        });
+    });
+
+    async function copyDetail() {
+        const { rows, total } = breakdown(detailInput.value);
+        if (rows.length === 0) { alert('لا يوجد نص لنسخه.'); return; }
+        const text = rows.map(r => `${r.word} = ${r.value}`).join('\n') + `\n\nالجُمّل الكلي = ${total}`;
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (e) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch (e2) {}
+            document.body.removeChild(ta);
+        }
+        alert('تم نسخ التفاصيل بنجاح!');
     }
 
     if ('serviceWorker' in navigator) {
